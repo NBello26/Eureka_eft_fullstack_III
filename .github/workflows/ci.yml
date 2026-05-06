@@ -1,0 +1,44 @@
+name: CI/CD Eureka Server
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-push-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login en Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+        id: login-ecr
+
+      - name: Build and Push
+        run: |
+          docker build -t ${{ secrets.ECR_REPO_URL }}:latest .
+          docker push ${{ secrets.ECR_REPO_URL }}:latest
+
+      - name: Desplegar vía SSM
+        run: |
+          aws ssm send-command \
+            --instance-ids ${{ secrets.EC2_INSTANCE_ID }} \
+            --document-name "AWS-RunShellScript" \
+            --parameters '{
+              "commands":[
+                "set -e",
+                "aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.registry }}",
+                "docker pull ${{ secrets.ECR_REPO_URL }}:latest",
+                "docker stop eureka-server || true",
+                "docker rm eureka-server || true",
+                "docker run -d --name eureka-server -p 8761:8761 ${{ secrets.ECR_REPO_URL }}:latest"
+              ]
+            }'
