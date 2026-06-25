@@ -25,7 +25,7 @@ kind: Service
 metadata:
   name: eureka-service
 spec:
-  type: ClusterIP # PRIVADO
+  type: ClusterIP # PRIVADO 2
   selector:
     app: eureka-server
   ports:
